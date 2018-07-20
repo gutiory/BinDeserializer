@@ -5,6 +5,7 @@ import implicits.runtime.{fields, _}
 import cats.effect.IO
 
 object BinDeserializer extends App {
+  /*
   val doc = XML.load("Example.xml")
   val messageList = doc \ "messages"
   val basicData = doc \\ "basicData"
@@ -44,7 +45,8 @@ object BinDeserializer extends App {
 
   val structFlatMap = structData.flatMap(fields.parse).map(field => field.name -> field).toMap
   println(structFlatMap)
-    //workflow.parseXML("NAV_STA_Messages.xml")
+  */
+  workflow.parseXML("Example.xml")
 
 }
 

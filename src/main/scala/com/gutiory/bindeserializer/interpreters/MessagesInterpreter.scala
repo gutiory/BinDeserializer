@@ -1,12 +1,11 @@
 package com.gutiory.bindeserializer.interpreters
 
-import com.gutiory.bindeserializer.BinDeserializer.basicData
 import com.gutiory.bindeserializer.algebras.Messages
 import com.gutiory.bindeserializer.models.Message
 import com.gutiory.bindeserializer.implicits.runtime._
 import cats.syntax.flatMap._
 import cats.syntax.functor._
-import cats.effect.Effect
+
 
 import scala.xml.{Node, XML}
 
@@ -29,7 +28,10 @@ class MessagesInterpreter[F[_]] extends Messages[F]{
     val structMap = structData.flatMap(fields.parse).map(field => field.name -> field).toMap
     val structFlatMap = structData.flatMap(fields.parse).map(field => field.name -> field).toMap
 
-    messageData.map(parseMessage).
+
+    import cats.implicits._
+
+    messageData.map(parseMessage).toList.sequence
 
   }
 

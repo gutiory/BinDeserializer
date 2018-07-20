@@ -2,7 +2,7 @@ package com.gutiory.bindeserializer.modules
 
 import com.gutiory.bindeserializer.algebras.Messages
 
-trait Workflow[F[_]] {
+trait Workflow[+F[_]] {
 
   def parseXML(xmlFile: String)
 
