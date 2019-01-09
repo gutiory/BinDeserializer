@@ -1,6 +1,6 @@
 package com.gutiory.bindeserializer.implicits
 
-import cats._
+import cats.Applicative
 import com.gutiory.bindeserializer.algebras.{Fields, Messages}
 import com.gutiory.bindeserializer.interpreters.{FieldsInterpreter, MessagesInterpreter}
 import com.gutiory.bindeserializer.modules.Workflow

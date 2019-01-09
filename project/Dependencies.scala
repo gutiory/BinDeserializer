@@ -11,8 +11,16 @@ object Dependencies {
 
   lazy val scalaXml = "org.scala-lang.modules" %% "scala-xml" %  ScalaXmlVersion
 
+  lazy val scalaTest = "org.scalatest" %% "scalatest" % "3.0.5"
+  lazy val scalaMock = "org.scalamock" %% "scalamock" % "4.1.0"
+  lazy val scalaCheck = "org.scalacheck" %% "scalacheck" % "1.14.0"
+
+
   lazy val dependencies: Seq[ModuleID] = cats ++ Seq(
-    scalaXml
+    scalaXml,
+    scalaTest % Test,
+    scalaMock % Test,
+    scalaCheck % Test
   )
 
 }
