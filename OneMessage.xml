@@ -45,7 +45,7 @@
 
         <structDataTypes>
             <structData name="StructData1" >
-                <structField name="stn"	dataType="Int" />
+                <structField name="simpleField1"	dataType="Int" />
             </structData>
         </structDataTypes>
 
