@@ -1,5 +1,7 @@
 package com.gutiory.bindeserializer.interpreters
 
+import java.nio.ByteBuffer
+
 import scala.xml.{Node, NodeSeq, XML}
 import com.gutiory.bindeserializer.algebras.Messages
 import com.gutiory.bindeserializer.models._
@@ -14,17 +16,31 @@ class MessagesInterpreter[F[_]:Applicative] extends Messages[F]{
                            enumeratedDataMap: Map[String, Enum], arrayDataMap: Map[String, XMLArray],
                            byteArray:Array[Byte]): F[String] = {
 
-    def deserializeMsg(fieldList: List[XMLField], sizeAcc: Int) : String = ???
 
-    def getStructFieldSize(field: StructField, acum: Int) : Int = {
+    /*messageList.map(msg => deserializeMsgLoop(msg.fields, 0))
+
+    def deserializeMsgLoop(fieldList: List[XMLField], output: String, sizeAcc: Int) : String = {
+      fieldList match {
+        case x::xs =>
+      }
+    }
+    */
+
+    def getStructFieldSize(field: StructField, acum: Either[String, Int]) : Either[String, Int] = {
       field.dataType match {
         case Some(dataType) =>
           val size = if (basicDataMap.get(dataType).isDefined) getSize(basicDataMap(dataType))
           else if (simpleDataMap.get(dataType).isDefined) getSize(simpleDataMap(dataType))
           else if (enumeratedDataMap.get(dataType).isDefined) getSize(enumeratedDataMap(dataType))
           else if (arrayDataMap.get(dataType).isDefined) getSize(arrayDataMap(dataType))
-          else 0
-          size + acum
+          else Left("Data type not found")
+          size match {
+            case Right(value) => acum match {
+              case Right(acumR) => Right(value + acumR)
+              case Left(msg) => Left(msg)
+            }
+            case Left(msg) => Left(msg)
+          }
       }
     }
 
@@ -37,31 +53,35 @@ class MessagesInterpreter[F[_]:Applicative] extends Messages[F]{
     }
 
 
-    def getSize(field: XMLField) : Int = {
+    def getSize(field: XMLField) : Either[String, Int] = {
       field match {
-        case b: Basic => b.numBits.getOrElse(4) // Int by default
+        case b: Basic => Right(b.numBits.getOrElse(4)) // Int by default
         case s: Simple => s.representation match {
           case Some(repr) => basicDataMap.get(repr) match {
-            case Some(basic) => basic.numBits.getOrElse(4)
-            case None => 0
+            case Some(basic) => Right(basic.numBits.getOrElse(4))
+            case None => Left("Basic data not found")
           }
-          case None => 0
+          case None => Left("Representation not found")
         }
-        case s: Struct => s.fields.flatten.foldRight(0)(getStructFieldSize)
+        //case s: Struct => s.fields.flatten.foldRight(Either("",0))(getStructFieldSize _)
         case e: EnumList => e.representation match {
           case Some(repr) =>
             if (basicDataMap.get(repr).isDefined) getSize(basicDataMap(repr))
             else if (simpleDataMap.get(repr).isDefined) getSize(simpleDataMap(repr))
-            else 0
-          case None => 0
+            else Left("Representation not found")
+          case None => Left("Representation not found")
         }
         case a: XMLArray => a.dataType match {
           case Some(dataType) => getField(dataType) match {
-            case Some(arrayField) => a.cardinality * getSize(arrayField)
-            case None => 0
+            case Some(arrayField) =>  getSize(arrayField) match {
+              case Right(arraySize) => Right(a.cardinality * arraySize)
+              case Left(_) => Left("Array size not found")
+            }
+            case None => Left("Data Type field not found")
           }
-          case None => 0
+          case None => Left("Data type not found")
         }
+        case _ => Left("Data type not found")
       }
     }
     "TBD".pure[F]
@@ -86,13 +106,7 @@ class MessagesInterpreter[F[_]:Applicative] extends Messages[F]{
 
     def parseMessageFields(field: XMLField, message: List[XMLField]) : List[XMLField] = field match {
       case b: Basic => b :: message
-      case s: Simple => s.representation match {
-        case Some(representation) => basicDataMap.get(representation) match {
-          case Some(b) => parseMessageFields(b, message)
-          case None => message
-        }
-        case None => message
-      }
+      case s: Simple => s :: message
       case s: Struct => s.fields.flatten.flatMap(f => parseMessageFields(f, message))
       case sf: StructField => sf.dataType match {
         case Some(dataType) =>
@@ -127,10 +141,6 @@ class MessagesInterpreter[F[_]:Applicative] extends Messages[F]{
 
     }
     val messageDD = messageData.flatMap(parseMsg)
-    println(messageFieldMap)
-    println(messageDD)
-
-    println(res)
     res.flatten.toList.pure[F]
   }
 
@@ -164,5 +174,22 @@ class MessagesInterpreter[F[_]:Applicative] extends Messages[F]{
   def nodeTextStr(key: String, node: Node) : Option[String] = {
     node.attribute(key).map(_.text)
   }
+
+  override def byteToString(bytes: Array[Byte], size: Int, simpleField: Simple): Either[String, String] = {
+    val subBytes = bytes.slice(0,size)
+    simpleField.name match {
+      case "Char" => Right(ByteBuffer.wrap(subBytes).getChar.toString)
+      case "Int" => Right(ByteBuffer.wrap(subBytes).getInt.toString)
+      case "Unsigned_int" => Right(ByteBuffer.wrap(subBytes).getInt & 0xffff toString)
+      case "Unsigned_short" => Right(ByteBuffer.wrap(subBytes).getShort & 0xff toString)
+      case "Unsigned_char" => Right(ByteBuffer.wrap(subBytes).getChar.toString)
+      case "Bool" => Right((ByteBuffer.wrap(subBytes) == 0).toString)
+      case "Enum" => Right(ByteBuffer.wrap(subBytes).getInt.toString)
+      case "Float" => Right(ByteBuffer.wrap(subBytes).getFloat.toString)
+      case "Double" => Right(ByteBuffer.wrap(subBytes).getDouble.toString)
+      case _ => Left("Basic data type not supported")
+    }
+  }
+
 
 }

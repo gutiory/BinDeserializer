@@ -14,4 +14,6 @@ abstract class Messages[F[_]] {
 
   def parseMessage(node: Node): F[Option[Message]]
 
+  def byteToString(bytes: Array[Byte], size: Int, simpleField: Simple): Either[String, String]
+
 }
