@@ -8,4 +8,6 @@ abstract class Messages[F[_]] {
 
   def beautifier(message: Message): F[String]
 
+  def byteToString(bytes: Array[Byte], size: Int, simpleField: Simple): Either[String, String]
+
 }

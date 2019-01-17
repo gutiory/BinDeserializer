@@ -10,3 +10,6 @@ scalacOptions += "-Ypartial-unification"
 
 libraryDependencies ++= dependencies
 
+coverageEnabled := true
+coverageMinimum := 60
+coverageFailOnMinimum := true
