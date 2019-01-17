@@ -2,21 +2,46 @@ package com.gutiory.bindeserializer.models
 
 sealed trait XMLField {
   val name: String
-  def beauty(depth: Int = 0): String = this.toString
-  def size(acc: Int = 0): Int = 0
+  def size: Int
 }
 
-trait DT
-case class SimpleDT(name:String, representation: Representation) extends XMLField with DT
-case class EnumeratorDT(name: String, values: List[EnumValue]) extends XMLField with DT
-case class StructDT(name: String, fields: List[StructField]) extends XMLField with DT
-case class ArrayDT(name: String, dataType: DT, cardinality: Int) extends XMLField with DT
+trait DT extends XMLField
 
-case class Representation(name: String, size: Int) extends XMLField
-case class EnumValue(name: String, value: Int) extends XMLField
-case class StructField(name: String, dataType: DT) extends XMLField
-case class MessageField(name: String, dataType: DT) extends XMLField
-case class Message(name: String, id: String, fields: List[MessageField]) extends XMLField
+case class SimpleDT(name:String, representation: Representation) extends DT {
+  override def size: Int = representation.size
+}
+
+case class EnumeratorDT(name: String, values: List[EnumValue]) extends DT {
+  override def size: Int = values.map(_.size).sum
+}
+
+case class StructDT(name: String, fields: List[StructField]) extends DT {
+  override def size: Int = fields.map(_.size).sum
+}
+
+case class ArrayDT(name: String, dataType: DT, cardinality: Int) extends DT {
+  override def size: Int = cardinality * dataType.size
+}
+
+case class Representation(name: String, s: Int) extends XMLField {
+  override def size: Int = s
+}
+
+case class EnumValue(name: String, value: Int) extends XMLField {
+  override def size: Int = 32
+}
+
+case class StructField(name: String, dataType: DT) extends XMLField {
+  override def size: Int = dataType.size
+}
+
+case class MessageField(name: String, dataType: DT) extends XMLField {
+  override def size: Int = dataType.size
+}
+
+case class Message(name: String, id: String, fields: List[MessageField]) extends XMLField {
+  override def size: Int = fields.map(_.size).sum
+}
 
 sealed trait BinDeserializerError extends Throwable{
   val error: String

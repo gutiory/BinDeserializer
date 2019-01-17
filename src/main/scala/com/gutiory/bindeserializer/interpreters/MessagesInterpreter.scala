@@ -1,224 +1,125 @@
 package com.gutiory.bindeserializer.interpreters
 
-import com.gutiory.bindeserializer.algebras.{Fields, Messages, Nodes}
+import com.gutiory.bindeserializer.algebras.{Messages, Nodes}
 import com.gutiory.bindeserializer.models._
 import com.gutiory.bindeserializer.implicits.runtime._
 import cats.implicits._
 
-class MessagesInterpreter[F[_]:DeserializerMonadError](implicit nodes: Nodes[F], fields: Fields[F]) extends Messages[F]{
+import scala.util.Try
+import scala.xml.Node
+
+class MessagesInterpreter[F[_]](implicit nodes: Nodes[F], F: DeserializerMonadError[F]) extends Messages[F]{
 
   override def parse: F[List[Message]] = for {
     repreNodes <- nodes.items("basicData")
-    representations <- repreNodes.traverse(fields.parseRepresentation)
+    representations <- repreNodes.traverse(parseRepresentation)
     simpleNodes <- nodes.items("simpleData")
-    simpleDTs <- simpleNodes.traverse(n => fields.parseSimpleDT(n, representations))
+    simpleDTs <- simpleNodes.traverse(n => parseSimpleDT(n, representations))
     enumNodes <- nodes.itemsWithChildren("enumeratedData", "enumerator")
-    enumDTs <- enumNodes.traverse(n => (fields.parseEnumDT _).tupled(n))
+    enumDTs <- enumNodes.traverse(n => (parseEnumDT _).tupled(n))
     arrayNodes <- nodes.items("arrayData")
-    arrayDTs <- arrayNodes.traverse(n => fields.parseArrayDT(n, simpleDTs))
+    arrayDTs <- arrayNodes.traverse(n => parseArrayDT(n, simpleDTs))
     structNodes <- nodes.itemsWithChildren("structData", "structField")
-    structDTs <- structNodes.traverse(n => fields.parseStructDT(n._1, n._2, simpleDTs))
+    structDTs <- structNodes.traverse(n => parseStructDT(n._1, n._2, simpleDTs))
     messageNodes <- nodes.itemsWithChildren("messageData", "field")
-    messages <- messageNodes.traverse(n => fields.parseMessageDT(n._1, n._2, simpleDTs ++ enumDTs ++ arrayDTs ++ structDTs))
+    messages <- messageNodes.traverse(n => parseMessageDT(n._1, n._2, simpleDTs ++ enumDTs ++ arrayDTs ++ structDTs))
   } yield messages
 
-  override def beautifier(message: Message): F[String] = message.beauty(0).pure[F]
+  override def parseRepresentation(node: Node): F[Representation] = node.label match {
+    case "basicData" => toRepresentation(node)
+    case _ => F.raiseError(UnknownNodeError)
+  }
+
+  override def parseSimpleDT(node: Node, representations: List[Representation]): F[DT] = node.label match {
+    case "simpleData" => toSimple(node, representations)
+    case _ => F.raiseError(UnknownNodeError)
+  }
+
+  override def parseEnumDT(node: Node, values: List[Node]): F[DT] = node.label match {
+    case "enumeratedData" => toEnumerator(node, values)
+    case _ => F.raiseError(UnknownNodeError)
+  }
+
+  override def parseArrayDT(node: Node, simples: List[DT]): F[DT] = node.label match {
+    case "arrayData" => toArray(node, simples)
+    case _ => F.raiseError(UnknownNodeError)
+  }
+
+  override def parseStructDT(node: Node, fields: List[Node], simples: List[DT]): F[DT] = node.label match {
+    case "structData" => toStruct(node, fields, simples)
+    case _ => F.raiseError(UnknownNodeError)
+  }
+
+  override def parseMessageDT(node: Node, fields: List[Node], types: List[DT]): F[Message] = node.label match {
+    case "messageData" => toMessage(node, fields, types)
+    case _ => F.raiseError(UnknownNodeError)
+  }
+
+  private def toRepresentation(node: Node): F[Representation] = for {
+    name <- node.getString("name")
+    size <- node.getInt("size")
+  } yield Representation(name, size)
+
+  private def toSimple(node: Node, representations: List[Representation]): F[DT] = for {
+    name <- node.getString("name")
+    representationKey <- node.getString("representation")
+    representation <- F.fromOption(representations.find(_.name == representationKey), RepresentationNotFoundError(representationKey))
+  } yield SimpleDT(name, representation)
+
+  private def toEnumValue(node: Node): F[EnumValue] = for {
+    name <- node.getString("name")
+    value <- node.getInt("value")
+  } yield EnumValue(name, value)
+
+  private def toEnumerator(node: Node, values: List[Node]): F[DT] = for {
+    name <- node.getString("name")
+    vs <- values.traverse(toEnumValue)
+  } yield EnumeratorDT(name, vs)
+
+  private def toArray(node: Node, simples: List[DT]): F[DT] = for {
+    name <- node.getString("name")
+    typeKey <- node.getString("dataType")
+    simpleTypes = simples.collect{ case b: SimpleDT => b }
+    dataType <- F.fromOption(simpleTypes.find(_.name == typeKey), DataTypeNotFoundError(typeKey))
+    cardinality <- node.getInt("cardinality")
+  } yield ArrayDT(name, dataType, cardinality)
+
+  private def toStructField(node: Node, simples: List[DT]): F[StructField] = for {
+    name <- node.getString("name")
+    typeKey <- node.getString("dataType")
+    simpleTypes = simples.collect{ case b: SimpleDT => b }
+    dataType <- F.fromOption(simpleTypes.find(_.name == typeKey), DataTypeNotFoundError(typeKey))
+  } yield StructField(name, dataType)
+
+  private def toStruct(node: Node, fields: List[Node], simples: List[DT]): F[DT] = for {
+    name <- node.getString("name")
+    fs <- fields.traverse(f => toStructField(f, simples))
+  } yield StructDT(name, fs)
+
+  private def toMessageField(node: Node, types: List[DT]): F[MessageField] = for {
+    name <- node.getString("name")
+    typeKey <- node.getString("dataType")
+    ts = types.collect{
+      case t: SimpleDT => t
+      case t: EnumeratorDT => t
+      case t: StructDT => t
+      case t: ArrayDT => t
+    }
+    dataType <- F.fromOption(ts.find(_.name == typeKey), DataTypeNotFoundError(typeKey))
+  } yield MessageField(name, dataType)
+
+  private def toMessage(node: Node, fields: List[Node], types: List[DT]): F[Message] = for {
+    name <- node.getString("name")
+    id <- node.getString("id")
+    fs <- fields.traverse(f => toMessageField(f, types))
+  } yield Message(name, id, fs)
+
+  implicit class NodeOps(self: Node)(implicit F: DeserializerMonadError[F]) {
+    def getString(key: String): F[String] =
+      F.fromOption(self.attribute(key).map(_.text), KeyNotFoundError(key))
+
+    def getInt(key: String): F[Int] =
+      F.fromOption(self.attribute(key).flatMap(g => Try(g.text.toInt).toOption), KeyNotFoundError(key))
+  }
 
 }
-
-
-
-
-//import java.nio.ByteBuffer
-//
-//import scala.xml.{Node, NodeSeq, XML}
-//import com.gutiory.bindeserializer.algebras.Messages
-//import com.gutiory.bindeserializer.models._
-//import cats.Applicative
-//import cats.implicits._
-//import com.gutiory.bindeserializer.implicits.runtime._
-//
-//import scala.collection.immutable
-//
-//class MessagesInterpreter[F[_]:Applicative] extends Messages[F]{
-//  override def deserialize(messageList: List[Message], basicDataMap: Map[String, Basic], simpleDataMap: Map[String, Simple],
-//                           enumeratedDataMap: Map[String, Enum], arrayDataMap: Map[String, XMLArray],
-//                           byteArray:Array[Byte]): F[String] = {
-//
-//
-//    /*messageList.map(msg => deserializeMsgLoop(msg.fields, 0))
-//
-//    def deserializeMsgLoop(fieldList: List[XMLField], output: String, sizeAcc: Int) : String = {
-//      fieldList match {
-//        case x::xs =>
-//      }
-//    }
-//    */
-//
-//    def getStructFieldSize(field: StructField, acum: Either[String, Int]) : Either[String, Int] = {
-//      field.dataType match {
-//        case Some(dataType) =>
-//          val size = if (basicDataMap.get(dataType).isDefined) getSize(basicDataMap(dataType))
-//          else if (simpleDataMap.get(dataType).isDefined) getSize(simpleDataMap(dataType))
-//          else if (enumeratedDataMap.get(dataType).isDefined) getSize(enumeratedDataMap(dataType))
-//          else if (arrayDataMap.get(dataType).isDefined) getSize(arrayDataMap(dataType))
-//          else Left("Data type not found")
-//          size match {
-//            case Right(value) => acum match {
-//              case Right(acumR) => Right(value + acumR)
-//              case Left(msg) => Left(msg)
-//            }
-//            case Left(msg) => Left(msg)
-//          }
-//      }
-//    }
-//
-//    def getField(dataType:String) : Option[XMLField] = {
-//      if (basicDataMap.get(dataType).isDefined) basicDataMap.get(dataType)
-//      else if (simpleDataMap.get(dataType).isDefined) simpleDataMap.get(dataType)
-//      else if (enumeratedDataMap.get(dataType).isDefined) enumeratedDataMap.get(dataType)
-//      else if (arrayDataMap.get(dataType).isDefined) arrayDataMap.get(dataType)
-//      else None
-//    }
-//
-//
-//    def getSize(field: XMLField) : Either[String, Int] = {
-//      field match {
-//        case b: Basic => Right(b.numBits.getOrElse(4)) // Int by default
-//        case s: Simple => s.representation match {
-//          case Some(repr) => basicDataMap.get(repr) match {
-//            case Some(basic) => Right(basic.numBits.getOrElse(4))
-//            case None => Left("Basic data not found")
-//          }
-//          case None => Left("Representation not found")
-//        }
-//        //case s: Struct => s.fields.flatten.foldRight(Either("",0))(getStructFieldSize _)
-//        case e: EnumList => e.representation match {
-//          case Some(repr) =>
-//            if (basicDataMap.get(repr).isDefined) getSize(basicDataMap(repr))
-//            else if (simpleDataMap.get(repr).isDefined) getSize(simpleDataMap(repr))
-//            else Left("Representation not found")
-//          case None => Left("Representation not found")
-//        }
-//        case a: XMLArray => a.dataType match {
-//          case Some(dataType) => getField(dataType) match {
-//            case Some(arrayField) =>  getSize(arrayField) match {
-//              case Right(arraySize) => Right(a.cardinality * arraySize)
-//              case Left(_) => Left("Array size not found")
-//            }
-//            case None => Left("Data Type field not found")
-//          }
-//          case None => Left("Data type not found")
-//        }
-//        case _ => Left("Data type not found")
-//      }
-//    }
-//    "TBD".pure[F]
-//  }
-//
-//  override def parseXMLFile(xmlFile: String): F[List[Message]] = {
-//    val doc = XML.load(xmlFile)
-//    val basicData: NodeSeq = doc \\ "basicData"
-//    val simpleData: NodeSeq = doc \\ "simpleData"
-//    val enumeratedData = doc \\ "enumeratedData"
-//    val arrayData = doc \\ "arrayData"
-//    val structData = doc \\ "structData"
-//    val messageData: NodeSeq = doc \\ "messageData"
-//    val messageFieldData = doc \\ "messageData" \\ "field"
-//
-//    val messageFieldMap = messageFieldData.flatMap(fields[Option].parse).flatten.map(field => field.name -> field).toMap
-//    val basicDataMap = basicData.flatMap(fields[Option].parse).flatten.map(field => field.name -> field).toMap
-//    val simpleDataMap = simpleData.flatMap(fields[Option].parse).flatten.map(field => field.name -> field).toMap
-//    val structDataMap = structData.flatMap(fields[Option].parse).flatten.map(field => field.name -> field).toMap
-//    val enumeratedDataMap = enumeratedData.flatMap(fields[Option].parse).flatten.map(field => field.name -> field).toMap
-//    val arrayDataMap = arrayData.flatMap(fields[Option].parse).flatten.map(field => field.name -> field).toMap
-//
-//    def parseMessageFields(field: XMLField, message: List[XMLField]) : List[XMLField] = field match {
-//      case b: Basic => b :: message
-//      case s: Simple => s :: message
-//      case s: Struct => s.fields.flatten.flatMap(f => parseMessageFields(f, message))
-//      case sf: StructField => sf.dataType match {
-//        case Some(dataType) =>
-//          if (basicDataMap.get(dataType).isDefined) parseMessageFields(basicDataMap(dataType), message)
-//          else if (simpleDataMap.get(dataType).isDefined) parseMessageFields(simpleDataMap(dataType), message)
-//          else if (enumeratedDataMap.get(dataType).isDefined) parseMessageFields(enumeratedDataMap(dataType), message)
-//          else message
-//        case None => message
-//      }
-//      case a: XMLArray => a :: message
-//      case e: EnumList => e :: message
-//      case _ => message
-//    }
-//
-//    val res: immutable.Seq[Option[Message]] = messageData.map { msgNode =>
-//      parseMsg(msgNode) match {
-//        case Some(msg) =>
-//          val fieldList: NodeSeq = msgNode \\ "field"
-//          val msgFieldList: immutable.Seq[List[XMLField]] = fieldList.map(fl => nodeTextStr("dataType", fl) match {
-//            case Some(dataType) =>
-//              if (basicDataMap.get(dataType).isDefined) parseMessageFields(basicDataMap(dataType), Nil)
-//              else if (simpleDataMap.get(dataType).isDefined) parseMessageFields(simpleDataMap(dataType), Nil)
-//              else if (enumeratedDataMap.get(dataType).isDefined) parseMessageFields(enumeratedDataMap(dataType), Nil)
-//              else if (arrayDataMap.get(dataType).isDefined) parseMessageFields(arrayDataMap(dataType), Nil)
-//              else Nil
-//            case None => Nil
-//          })
-//          println("msgFieldList ==> " + msg.id + " ==> " + msgFieldList.flatten)
-//          Option(Message(msg.name, msg.id, msgFieldList.flatten.toList))
-//        case None => None
-//      }
-//
-//    }
-//    val messageDD = messageData.flatMap(parseMsg)
-//    res.flatten.toList.pure[F]
-//  }
-//
-//  def parseMsg(node: Node) : Option[Message] = {
-//    node.label match {
-//      case "messageData" => nodeTextStr("name", node) match {
-//        case Some(name) => nodeTextStr("id", node) match {
-//          case Some(id) => Some(Message(name, id, List()))
-//          case None => None
-//        }
-//        case None => None
-//      }
-//      case _ => None
-//    }
-//  }
-//
-//  override def parseMessage(node: Node): F[Option[Message]] = {
-//    val res = node.label match {
-//      case "messageData" => nodeTextStr("name", node) match {
-//        case Some(name) => nodeTextStr("id", node) match {
-//          case Some(id) => Some(Message(name, id, List()))
-//          case None => None
-//        }
-//        case None => None
-//      }
-//      case _ => None
-//    }
-//    res.pure[F]
-//  }
-//
-//  def nodeTextStr(key: String, node: Node) : Option[String] = {
-//    node.attribute(key).map(_.text)
-//  }
-//
-//  override def byteToString(bytes: Array[Byte], size: Int, simpleField: Simple): Either[String, String] = {
-//    val subBytes = bytes.slice(0,size)
-//    simpleField.name match {
-//      case "Char" => Right(ByteBuffer.wrap(subBytes).getChar.toString)
-//      case "Int" => Right(ByteBuffer.wrap(subBytes).getInt.toString)
-//      case "Unsigned_int" => Right(ByteBuffer.wrap(subBytes).getInt & 0xffff toString)
-//      case "Unsigned_short" => Right(ByteBuffer.wrap(subBytes).getShort & 0xff toString)
-//      case "Unsigned_char" => Right(ByteBuffer.wrap(subBytes).getChar.toString)
-//      case "Bool" => Right((ByteBuffer.wrap(subBytes) == 0).toString)
-//      case "Enum" => Right(ByteBuffer.wrap(subBytes).getInt.toString)
-//      case "Float" => Right(ByteBuffer.wrap(subBytes).getFloat.toString)
-//      case "Double" => Right(ByteBuffer.wrap(subBytes).getDouble.toString)
-//      case _ => Left("Basic data type not supported")
-//    }
-//  }
-//
-//
-//}

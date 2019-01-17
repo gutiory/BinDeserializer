@@ -47,7 +47,7 @@ class MessagesSpec extends FlatSpec with Matchers with TestUtils {
         | </arrayDataTypes>
         | <structDataTypes>
         |   <structData name="StructData1" >
-        |     <structField name="stn"	dataType="Int" />
+        |     <structField name="simpleField1"	dataType="Int" />
         |   </structData>
         | </structDataTypes>
         | <messageDataTypes>
@@ -60,22 +60,9 @@ class MessagesSpec extends FlatSpec with Matchers with TestUtils {
         | </messageDataTypes>
         |</dataTypes>""".stripMargin
 
-    val expected = List(
-      Message("Message1", "ID_MESSAGE1", List(
-        MessageField("field1", SimpleDT("Int", Representation("Signed32", 32))),
-        MessageField("enumField1", EnumeratorDT("EnumName1", List(
-          EnumValue("ENUM0", 0),
-          EnumValue("ENUM1", 1),
-          EnumValue("ENUM2", 2),
-          EnumValue("ENUM3", 3),
-          EnumValue("ENUM4", 4),
-          EnumValue("ENUM5", 5)))),
-        MessageField("struct1", StructDT("StructData1", List(
-          StructField("stn", SimpleDT("Int", Representation("Signed32", 32)))))),
-        MessageField("array1", ArrayDT("Array1", SimpleDT("Char", Representation("Signed8", 8)),8)))))
+    val expected = List(msg1)
 
-
-    parser(xml).parse.unsafeRunSync() shouldBe expected
+    msgInterpreter(xml).parse.unsafeRunSync() shouldBe expected
   }
 
   "Messages" should "fail when a representation in missing" in {
@@ -101,7 +88,7 @@ class MessagesSpec extends FlatSpec with Matchers with TestUtils {
     val expected = Left(RepresentationNotFoundError("WrongRepresentation"))
 
 
-    parser(xml).parse.attempt.unsafeRunSync() shouldBe expected
+    msgInterpreter(xml).parse.attempt.unsafeRunSync() shouldBe expected
   }
 
   "Messages" should "fail when a datatype in missing" in {
@@ -127,7 +114,7 @@ class MessagesSpec extends FlatSpec with Matchers with TestUtils {
     val expected = Left(DataTypeNotFoundError("InvalidType"))
 
 
-    parser(xml).parse.attempt.unsafeRunSync() shouldBe expected
+    msgInterpreter(xml).parse.attempt.unsafeRunSync() shouldBe expected
   }
 
 
