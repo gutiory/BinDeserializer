@@ -1,19 +1,23 @@
 package com.gutiory.bindeserializer.algebras
 
-import com.gutiory.bindeserializer.models.{Basic, Enum, Message, Simple, XMLArray}
+import com.gutiory.bindeserializer.models.{DT, Message, Representation}
 
 import scala.xml.Node
 
 abstract class Messages[F[_]] {
 
-  def deserialize(messageList: List[Message], basicDataMap: Map[String, Basic], simpleDataMap: Map[String, Simple],
-                  enumeratedDataMap: Map[String, Enum], arrayDataMap: Map[String, XMLArray],
-                  byteArray:Array[Byte]): F[String]
+  def parse: F[List[Message]]
 
-  def parseXMLFile(xmlFile: String) : F[List[Message]]
+  def parseRepresentation(node: Node) : F[Representation]
 
-  def parseMessage(node: Node): F[Option[Message]]
+  def parseSimpleDT(node: Node, representations: List[Representation]): F[DT]
 
-  def byteToString(bytes: Array[Byte], size: Int, simpleField: Simple): Either[String, String]
+  def parseEnumDT(node: Node, values: List[Node]): F[DT]
+
+  def parseArrayDT(node: Node, simples: List[DT]): F[DT]
+
+  def parseStructDT(node: Node, fields: List[Node], simples: List[DT]): F[DT]
+
+  def parseMessageDT(node: Node, fields: List[Node], types: List[DT]): F[Message]
 
 }

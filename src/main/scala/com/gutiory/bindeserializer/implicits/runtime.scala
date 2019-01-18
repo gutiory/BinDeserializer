@@ -1,15 +1,13 @@
 package com.gutiory.bindeserializer.implicits
 
-import cats.Applicative
-import com.gutiory.bindeserializer.algebras.{Fields, Messages}
-import com.gutiory.bindeserializer.interpreters.{FieldsInterpreter, MessagesInterpreter}
-import com.gutiory.bindeserializer.modules.Workflow
+import cats.MonadError
+import com.gutiory.bindeserializer.algebras.Nodes
+import com.gutiory.bindeserializer.interpreters.NodesInterpreter
 
 object runtime {
 
-  implicit def fields[F[_] : Applicative] : Fields[F] = new FieldsInterpreter[F]
+  type DeserializerMonadError[F[_]] = MonadError[F, Throwable]
 
-  implicit def messages[F[_]: Applicative] : Messages[F] = new MessagesInterpreter[F]
+  implicit def nodes[F[_]: DeserializerMonadError]: Nodes[F] = new NodesInterpreter[F](Right("OneMessage.xml"))
 
-  implicit def workflow[F[_]: Applicative](implicit M: Messages[F]) : Workflow[F] = Workflow.impl[F](M)
 }
