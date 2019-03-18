@@ -4,6 +4,7 @@ object Dependencies {
 
   val CatsVersion = "1.0.1"
   val ScalaXmlVersion = "1.1.0"
+  val ScodecVersion = "1.10.3"
 
   lazy val cats = Seq(
     "org.typelevel" %% "cats-core" % CatsVersion,
@@ -15,12 +16,14 @@ object Dependencies {
   lazy val scalaMock = "org.scalamock" %% "scalamock" % "4.1.0"
   lazy val scalaCheck = "org.scalacheck" %% "scalacheck" % "1.14.0"
 
+  lazy val scodec = "org.scodec" %% "scodec-core" % ScodecVersion
 
   lazy val dependencies: Seq[ModuleID] = cats ++ Seq(
     scalaXml,
     scalaTest % Test,
     scalaMock % Test,
-    scalaCheck % Test
+    scalaCheck % Test,
+    scodec
   )
 
 }

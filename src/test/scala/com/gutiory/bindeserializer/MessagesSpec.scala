@@ -117,5 +117,56 @@ class MessagesSpec extends FlatSpec with Matchers with TestUtils {
     msgInterpreter(xml).parse.attempt.unsafeRunSync() shouldBe expected
   }
 
+  "Messages" should "fail when a representation name is not in the list of valid representation names" in {
+
+    val xml =
+      """<dataTypes>
+        | <basicDataRepresentations>
+        |   <basicData name="BasicRepresentation" size="8" />
+        | </basicDataRepresentations>
+        | <simpleDataTypes>
+        |   <simpleData name="Char" representation="BasicRepresentation" />
+        | </simpleDataTypes>
+        | <arrayDataTypes>
+        |   <arrayData name="Array1" dataType="Char" cardinality="8" />
+        | </arrayDataTypes>
+        | <messageDataTypes>
+        |   <messageData name="Message1" id="ID_MESSAGE1" >
+        |     <field name="array1"	dataType="Array1"	word=""	numBits=""	sbp="" />
+        |   </messageData>
+        | </messageDataTypes>
+        |</dataTypes>""".stripMargin
+
+    val expected = Left(InvalidRepresentationNameError("BasicRepresentation"))
+
+
+    msgInterpreter(xml).parse.attempt.unsafeRunSync() shouldBe expected
+  }
+
+  "Messages" should "fail when a simple data name is not in the list of valid simple data names" in {
+
+    val xml =
+      """<dataTypes>
+        | <basicDataRepresentations>
+        |   <basicData name="Unsigned8" size="8" />
+        | </basicDataRepresentations>
+        | <simpleDataTypes>
+        |   <simpleData name="InvalidSimpleName" representation="Unsigned8" />
+        | </simpleDataTypes>
+        | <arrayDataTypes>
+        |   <arrayData name="Array1" dataType="Char" cardinality="8" />
+        | </arrayDataTypes>
+        | <messageDataTypes>
+        |   <messageData name="Message1" id="ID_MESSAGE1" >
+        |     <field name="array1"	dataType="Array1"	word=""	numBits=""	sbp="" />
+        |   </messageData>
+        | </messageDataTypes>
+        |</dataTypes>""".stripMargin
+
+    val expected = Left(InvalidSimpleNameError("InvalidSimpleName"))
+
+
+    msgInterpreter(xml).parse.attempt.unsafeRunSync() shouldBe expected
+  }
 
 }
