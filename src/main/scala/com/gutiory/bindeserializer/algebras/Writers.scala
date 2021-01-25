@@ -4,6 +4,6 @@ import com.gutiory.bindeserializer.models.Message
 
 abstract class Writers[F[_]] {
 
-  def deserialize(msg: Message) : F[String]
+  def deserialize(msg: Message, bytes: Array[Byte]) : F[String]
 
 }

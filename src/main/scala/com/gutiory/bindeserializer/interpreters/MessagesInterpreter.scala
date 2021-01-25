@@ -56,12 +56,14 @@ class MessagesInterpreter[F[_]](implicit nodes: Nodes[F], F: DeserializerMonadEr
   }
 
   private def toRepresentation(node: Node): F[Representation] = for {
-    name <- node.getString("name")
+    nameKey <- node.getString("name")
+    name <- F.fromOption(AllowedValues.representationNameList.find(_ == nameKey), InvalidRepresentationNameError(nameKey))
     size <- node.getInt("size")
   } yield Representation(name, size)
 
   private def toSimple(node: Node, representations: List[Representation]): F[DT] = for {
-    name <- node.getString("name")
+    nameKey <- node.getString("name")
+    name <- F.fromOption(AllowedValues.simpleNameList.find(_ == nameKey), InvalidSimpleNameError(nameKey))
     representationKey <- node.getString("representation")
     representation <- F.fromOption(representations.find(_.name == representationKey), RepresentationNotFoundError(representationKey))
   } yield SimpleDT(name, representation)
